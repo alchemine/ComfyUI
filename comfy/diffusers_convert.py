@@ -115,8 +115,17 @@ textenc_pattern = re.compile("|".join(protected.keys()))
 code2idx = {"q": 0, "k": 1, "v": 2}
 
 
+def materialize_tensor(t):
+    # Lazy casting params (dynamic VRAM loading) report a fake device and only
+    # produce their real, patched weight when .to() is called on them.
+    if not isinstance(t.device, torch.device):
+        return t.to("cpu")
+    return t
+
+
 # This function exists because at the time of writing torch.cat can't do fp8 with cuda
 def cat_tensors(tensors):
+    tensors = [materialize_tensor(t) for t in tensors]
     x = 0
     for t in tensors:
         x += t.shape[0]
@@ -165,7 +174,7 @@ def convert_text_enc_state_dict_v20(text_enc_dict, prefix=""):
 
         text_proj = "transformer.text_projection.weight"
         if k.endswith(text_proj):
-            new_state_dict[k.replace(text_proj, "text_projection")] = v.transpose(0, 1).contiguous()
+            new_state_dict[k.replace(text_proj, "text_projection")] = materialize_tensor(v).transpose(0, 1).contiguous()
         else:
             relabelled_key = textenc_pattern.sub(lambda m: protected[re.escape(m.group(0))], k)
             new_state_dict[relabelled_key] = v
