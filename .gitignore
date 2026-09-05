@@ -24,3 +24,8 @@ web_custom_versions/
 filtered-openapi.yaml
 uv.lock
 .comfy_environment
+
+# Local-only assets and tooling (wildcards, credentials, custom/ scratch area)
+/wildcards/
+/login/
+/custom/
