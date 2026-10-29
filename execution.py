@@ -1281,7 +1281,7 @@ async def validate_prompt(prompt_id, prompt, partial_execution_list: Union[list[
 
     return (True, None, list(good_outputs), node_errors)
 
-MAXIMUM_HISTORY_SIZE = 10000
+MAXIMUM_HISTORY_SIZE = 10
 
 class PromptQueue:
     def __init__(self, server: "ExecutionServer"):

@@ -534,6 +534,9 @@ class RAMPressureCache(LRUCache):
         await super().set_prompt(dynprompt, node_ids, is_changed_cache)
 
     def clean_unused(self):
+        for bookkeeping in (self.used_generation, self.timestamps, self.children):
+            for key in [key for key in bookkeeping if key not in self.cache]:
+                del bookkeeping[key]
         self._clean_subcaches()
 
     async def set(self, node_id, value):

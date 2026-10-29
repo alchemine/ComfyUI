@@ -781,10 +781,16 @@ class LoadedModel:
         self._model = weakref.ref(model)
         if model.parent is not None:
             self._parent_model = weakref.ref(model.parent)
-            self._patcher_finalizer = weakref.finalize(model, self._switch_parent)
+            # The finalizer must not keep this LoadedModel alive: a strong bound method here
+            # would pin every discarded lookup instance to the long-lived parent patcher.
+            self._patcher_finalizer = weakref.finalize(model, LoadedModel._switch_parent, weakref.ref(self))
             self._patcher_finalizer.atexit = False
 
-    def _switch_parent(self):
+    @staticmethod
+    def _switch_parent(self_ref):
+        self = self_ref()
+        if self is None:
+            return
         model = self._parent_model()
         if model is not None:
             self._set_model(model)
