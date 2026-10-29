@@ -339,6 +339,10 @@ def prompt_worker(q, server_instance, asset_manager):
     e = execution.PromptExecutor(server_instance, cache_type=cache_type, cache_args={ "lru" : args.cache_lru, "ram" : cache_ram, "ram_inactive" : cache_ram_inactive }, asset_manager=asset_manager )
     last_gc_collect = 0
     need_gc = False
+    gc.freeze()
+    # Generation 2 collections took 0.2s in the middle of every third prompt;
+    # leave the cheap young collections on and do full ones only when idle.
+    gc.set_threshold(700, 10, 1000000)
     gc_collect_interval = 10.0
     background_scan_paused = False
 
@@ -349,6 +353,11 @@ def prompt_worker(q, server_instance, asset_manager):
                 timeout = max(gc_collect_interval - (current_time - last_gc_collect), 0.0)
 
             queue_item = q.get(timeout=timeout)
+            if queue_item is None and need_gc:
+                # Full collections run here, once the queue has been idle for
+                # gc_collect_interval, instead of in the middle of a prompt.
+                gc.collect()
+                comfy.model_management.soft_empty_cache()
             if queue_item is not None:
                 item, item_id = queue_item
                 execution_start_time = time.perf_counter()
@@ -389,7 +398,9 @@ def prompt_worker(q, server_instance, asset_manager):
             flags = q.get_flags()
             free_memory = flags.get("free_memory", False)
 
-            if flags.get("unload_models", free_memory):
+            unload_models = flags.get("unload_models", free_memory)
+
+            if unload_models:
                 comfy.model_management.unload_all_models()
                 need_gc = True
                 last_gc_collect = 0
@@ -399,11 +410,15 @@ def prompt_worker(q, server_instance, asset_manager):
                 need_gc = True
                 last_gc_collect = 0
 
+            if unload_models:
+                gc.unfreeze()
+                gc.collect()
+                gc.freeze()
+                comfy.model_management.soft_empty_cache()
+
             if need_gc:
                 current_time = time.perf_counter()
                 if (current_time - last_gc_collect) > gc_collect_interval:
-                    gc.collect()
-                    comfy.model_management.soft_empty_cache()
                     last_gc_collect = current_time
                     need_gc = False
                     hook_breaker_ac10a0.restore_functions()
